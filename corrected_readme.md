@@ -1,19 +1,23 @@
 # Flask Log Management System (Corrected)
 
-This document provides working setup and API examples for a simple Flask-based log management system using SQLite.
+This README corrects earlier inconsistencies and adds test and setup steps.
 
-- Database file: `data.db` in the application directory (same folder as `app.py`).
-- Environment: use a virtual environment `.venv` (Windows PowerShell and Linux/macOS).
+## Quick Summary
+- DB file is `data.db` located in the same folder as `app.py`.
+- Allowed `level` values: `DEBUG`, `INFO`, `WARNING`, `ERROR`.
+- `context` accepts any JSON value (object, string, number, array) and is stored as text; responses return the parsed JSON value.
+- Exported CSV includes header: `id, level, message, context, created_at` and default filename `logs.csv`.
 
 ## Setup
 
-1. Create and activate virtual environment, then install requirements:
+Use a virtual environment named `.venv`.
 
 Windows PowerShell:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+python app.py --init-db
 ```
 
 Linux/macOS (bash):
@@ -21,21 +25,10 @@ Linux/macOS (bash):
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-2. Initialize the database:
-
-Windows PowerShell:
-```powershell
-python app.py --init-db
-```
-
-Linux/macOS (bash):
-```bash
 python3 app.py --init-db
 ```
 
-3. Run the server:
+## Run server
 
 Windows PowerShell:
 ```powershell
@@ -47,48 +40,42 @@ Linux/macOS (bash):
 python3 app.py
 ```
 
-Notes:
-- `app.py` does not read `FLASK_ENV`; debug mode in code determines behavior.
-- Ensure you run commands from the application directory (`flask_logging_app`) so `data.db` is created there.
+## API Examples
 
-## API
-
-### Create a log
-
-Allowed levels: `DEBUG`, `INFO`, `WARNING`, `ERROR`.
-
-`context` may be any JSON value but it is recommended to send an object.
+Create a log
 
 Windows PowerShell:
 ```powershell
-# Windows PowerShell curl alias can be confusing; use Invoke-RestMethod
-$body = @{ level = "INFO"; message = "Started"; context = @{ user = "alice" } } | ConvertTo-Json
+$body = @{
+  level = "INFO"; 
+  message = "Started"; 
+  context = @{ user = "alice" }
+} | ConvertTo-Json -Compress
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5000/logs" -ContentType "application/json" -Body $body
 ```
 
 Linux/macOS (bash):
 ```bash
 curl -X POST http://127.0.0.1:5000/logs \
-	-H "Content-Type: application/json" \
-	-d '{"level": "INFO", "message": "Started", "context": {"user": "alice"}}'
+  -H "Content-Type: application/json" \
+  -d '{"level": "INFO", "message": "Started", "context": {"user": "alice"}}'
 ```
 
-### List logs (page + optional level filter)
+Notes: the `context` value in the request can be any JSON value; the response will include `context` as a parsed JSON value (object, string, number, array, or null).
 
-- Exact match for `level` is recommended; avoid wildcard `%`.
-- Defaults: `page=1`, `per_page=10`.
+List logs with pagination and filter
 
 Windows PowerShell:
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/logs?level=INFO&page=1&per_page=10"
+Invoke-RestMethod -Uri "http://127.0.0.1:5000/logs?level=INFO&page=2&per_page=5"
 ```
 
 Linux/macOS (bash):
 ```bash
-curl "http://127.0.0.1:5000/logs?level=INFO&page=1&per_page=10"
+curl "http://127.0.0.1:5000/logs?level=INFO&page=2&per_page=5"
 ```
 
-### Delete a log by ID
+Delete a log
 
 Windows PowerShell:
 ```powershell
@@ -100,9 +87,7 @@ Linux/macOS (bash):
 curl -X DELETE "http://127.0.0.1:5000/logs/10"
 ```
 
-### Export logs to CSV
-
-Exports to `logs.csv` in the app directory. Re-running overwrites the file.
+Export CSV
 
 Windows PowerShell:
 ```powershell
@@ -114,38 +99,25 @@ Linux/macOS (bash):
 curl -o logs.csv "http://127.0.0.1:5000/export"
 ```
 
-## Known Limitations (for testing)
+## Testing (pytest)
 
-- SQLite connections are not closed; concurrent write/export may cause `database is locked`.
-- Level filter uses `LIKE`; wildcard patterns (e.g., `%`) will match broadly.
-- `created_at` uses UTC without `Z` suffix.
-- Export path is fixed and overwrites existing `logs.csv`.
+Install and run tests (after activating `.venv`):
 
-## Minimal Test Steps (Windows)
-
+Windows PowerShell:
 ```powershell
-# Create INFO log
-$body = @{ level = "INFO"; message = "Boot"; context = @{ host = "local" } } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5000/logs" -ContentType "application/json" -Body $body
-
-# List
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/logs?page=1&per_page=5"
-
-# Export
-Invoke-WebRequest -OutFile logs.csv -Uri "http://127.0.0.1:5000/export"
+pip install -r requirements.txt
+pytest -q
 ```
 
-## Minimal Test Steps (Linux/macOS)
-
+Linux/macOS (bash):
 ```bash
-# Create INFO log
-curl -X POST http://127.0.0.1:5000/logs \
-	-H "Content-Type: application/json" \
-	-d '{"level":"INFO","message":"Boot","context":{"host":"local"}}'
-
-# List
-curl "http://127.0.0.1:5000/logs?page=1&per_page=5"
-
-# Export
-curl -o logs.csv "http://127.0.0.1:5000/export"
+pip install -r requirements.txt
+pytest -q
 ```
+
+## Notes and Clarifications
+- Allowed levels: `DEBUG`, `INFO`, `WARNING`, `ERROR` (use `WARNING` not `WARN`).
+- `context` may be any JSON value; if not provided it will be stored as `null`.
+- CSV export has header and uses filename `logs.csv` via HTTP `Content-Disposition` header.
+- The server reads/writes `data.db` in the same directory as `app.py`.
+- When writing automation interacting with this API, ensure you pass `context` as valid JSON and `level` as one of the allowed values.
