@@ -41,9 +41,12 @@ def create_log():
         return jsonify({"error": "invalid level"}), 400
     if not isinstance(message, str):
         return jsonify({"error": "message must be string"}), 400
+    # Validate context: enforce object (JSON object/dict) type if provided
     if context is None:
         context_str = None
     else:
+        if not isinstance(context, dict):
+            return jsonify({"error": "context must be a JSON object"}), 400
         context_str = json.dumps(context)
 
     created_at = datetime.utcnow().isoformat()
