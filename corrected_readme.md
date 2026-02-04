@@ -1,151 +1,139 @@
 # Flask Log Management System (Corrected)
 
-This document provides working setup and API examples for a simple Flask-based log management system using SQLite.
+This Flask + SQLite service provides a minimal log management API. The database file is always `data.db` in the same directory as `app.py`.
 
-- Database file: `data.db` in the application directory (same folder as `app.py`).
-- Environment: use a virtual environment `.venv` (Windows PowerShell and Linux/macOS).
+## Requirements
 
-## Setup
+- Python 3.8+ (tested with 3.13)
+- Virtual environment name: `.venv`
+- Dependencies: see `requirements.txt` (Flask + pytest for tests)
 
-1. Create and activate virtual environment, then install requirements:
+## Quick Start
 
-Windows PowerShell:
+### 1) Set up the environment
+
+**Windows PowerShell**
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+./setup.ps1    # use -Recreate to rebuild .venv
 ```
 
-Linux/macOS (bash):
+**Linux/macOS (bash)**
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+chmod +x setup.sh
+./setup.sh      # pass --recreate to rebuild .venv
 ```
 
-2. Initialize the database:
+> After setup, activate if you want an interactive shell:
+> - PowerShell: `./.venv/Scripts/Activate.ps1`
+> - bash: `source .venv/bin/activate`
 
-Windows PowerShell:
+### 2) Initialize the database
+
 ```powershell
-python app.py --init-db
+./.venv/Scripts/python.exe app.py --init-db
 ```
 
-Linux/macOS (bash):
 ```bash
-python3 app.py --init-db
+.venv/bin/python app.py --init-db
 ```
 
-3. Run the server:
+### 3) Run the server
 
-Windows PowerShell:
 ```powershell
-python app.py
+./.venv/Scripts/python.exe app.py
 ```
 
-Linux/macOS (bash):
 ```bash
-python3 app.py
+.venv/bin/python app.py
 ```
 
-Notes:
-- `app.py` does not read `FLASK_ENV`; debug mode in code determines behavior.
-- Ensure you run commands from the application directory (`flask_logging_app`) so `data.db` is created there.
+Server runs at `http://127.0.0.1:5000`.
 
-## API
+## API Overview
 
-### Create a log
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/logs` | POST | Create a log entry |
+| `/logs` | GET | List logs (pagination + optional level filter) |
+| `/logs/<id>` | DELETE | Delete a log by ID |
+| `/export` | GET | Download all logs as `logs.csv` |
 
-Allowed levels: `DEBUG`, `INFO`, `WARNING`, `ERROR`.
+### Allowed levels
 
-`context` may be any JSON value but it is recommended to send an object.
+`DEBUG`, `INFO`, `WARNING`, `ERROR`  
+> Note: `WARN` is **not** accepted by the server.
 
-Windows PowerShell:
+### POST /logs
+
+- Content-Type: `application/json`
+- Body fields:
+  - `level` (string, required)
+  - `message` (string, required)
+  - `context` (JSON value, optional)
+
+**Behavior**
+- `context` is serialized with `json.dumps` if provided. The server does **not** enforce that it is an object; any JSON value is accepted, but using an object (dict) is recommended.
+- Returns `201 Created` with the created log including `id` and `created_at` (UTC ISO8601).
+
+**Example (PowerShell)**
 ```powershell
-# Windows PowerShell curl alias can be confusing; use Invoke-RestMethod
 $body = @{ level = "INFO"; message = "Started"; context = @{ user = "alice" } } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5000/logs" -ContentType "application/json" -Body $body
 ```
 
-Linux/macOS (bash):
+**Example (curl)**
 ```bash
 curl -X POST http://127.0.0.1:5000/logs \
-	-H "Content-Type: application/json" \
-	-d '{"level": "INFO", "message": "Started", "context": {"user": "alice"}}'
+  -H "Content-Type: application/json" \
+  -d '{"level":"INFO","message":"Started","context":{"user":"alice"}}'
 ```
 
-### List logs (page + optional level filter)
+### GET /logs
 
-- Exact match for `level` is recommended; avoid wildcard `%`.
-- Defaults: `page=1`, `per_page=10`.
+Query parameters:
+- `level` (optional): exact match (SQL `LIKE` with the provided string)
+- `page` (default `1`)
+- `per_page` (default `10`)
 
-Windows PowerShell:
-```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/logs?level=INFO&page=1&per_page=10"
+Response:
+```json
+{
+  "items": [
+    {"id": 1, "level": "INFO", "message": "Started", "context": {"user": "alice"}, "created_at": "..."}
+  ],
+  "page": 1,
+  "per_page": 10
+}
 ```
 
-Linux/macOS (bash):
-```bash
-curl "http://127.0.0.1:5000/logs?level=INFO&page=1&per_page=10"
-```
+### DELETE /logs/<id>
 
-### Delete a log by ID
+- Returns `204 No Content` even if the ID did not exist.
 
-Windows PowerShell:
-```powershell
-Invoke-RestMethod -Method Delete -Uri "http://127.0.0.1:5000/logs/10"
-```
+### GET /export
 
-Linux/macOS (bash):
-```bash
-curl -X DELETE "http://127.0.0.1:5000/logs/10"
-```
+- Returns a CSV download named `logs.csv` with columns: `id, level, message, context, created_at`.
 
-### Export logs to CSV
+## Testing
 
-Exports to `logs.csv` in the app directory. Re-running overwrites the file.
-
-Windows PowerShell:
-```powershell
-Invoke-WebRequest -OutFile logs.csv -Uri "http://127.0.0.1:5000/export"
-```
-
-Linux/macOS (bash):
-```bash
-curl -o logs.csv "http://127.0.0.1:5000/export"
-```
-
-## Known Limitations (for testing)
-
-- SQLite connections are not closed; concurrent write/export may cause `database is locked`.
-- Level filter uses `LIKE`; wildcard patterns (e.g., `%`) will match broadly.
-- `created_at` uses UTC without `Z` suffix.
-- Export path is fixed and overwrites existing `logs.csv`.
-
-## Minimal Test Steps (Windows)
+Run using the provided scripts or directly with pytest.
 
 ```powershell
-# Create INFO log
-$body = @{ level = "INFO"; message = "Boot"; context = @{ host = "local" } } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:5000/logs" -ContentType "application/json" -Body $body
-
-# List
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/logs?page=1&per_page=5"
-
-# Export
-Invoke-WebRequest -OutFile logs.csv -Uri "http://127.0.0.1:5000/export"
+./run_tests.ps1
 ```
-
-## Minimal Test Steps (Linux/macOS)
 
 ```bash
-# Create INFO log
-curl -X POST http://127.0.0.1:5000/logs \
-	-H "Content-Type: application/json" \
-	-d '{"level":"INFO","message":"Boot","context":{"host":"local"}}'
-
-# List
-curl "http://127.0.0.1:5000/logs?page=1&per_page=5"
-
-# Export
-curl -o logs.csv "http://127.0.0.1:5000/export"
+./run_tests.sh
 ```
+
+## Notes
+
+- DB file **must** remain `data.db` in the app directory; the app always connects to that path.
+- The server parses JSON with `force=True`; invalid JSON yields a 400 from Flask before handler logic.
+- Deleting logs does not reclaim IDs; they auto-increment.
+
+## Troubleshooting
+
+- If you see `invalid level`, ensure the `level` is one of `DEBUG|INFO|WARNING|ERROR`.
+- If `data.db` is missing, run with `--init-db`.
+- PowerShell execution policy may block scripts; run in the same session with `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` if needed.
